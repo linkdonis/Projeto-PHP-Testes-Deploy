@@ -1,0 +1,3 @@
+No src/funcoes.php, remova o ponto e vírgula em:
+  return round($preco * $quantidade, 2);
+Depois rode php -l src/funcoes.php.

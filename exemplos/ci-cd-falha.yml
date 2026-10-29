@@ -1,0 +1,73 @@
+name: CI e Deploy PHP
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    name: Validar e testar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Preparar PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+
+      - name: Validar sintaxe dos arquivos PHP
+        run: |
+          find index.php health.php src tests -type f -name '*.php' -print0 |
+            while IFS= read -r -d '' arquivo; do
+              php -l "$arquivo" || exit 1
+            done
+
+      - name: Executar testes da regra de negócio
+        run: php tests/test_nao_existe.php
+
+      - name: Construir imagem Docker de teste
+        run: docker compose -p ci-php build
+
+      - name: Iniciar contêiner de teste
+        run: docker compose -p ci-php up -d --no-build
+
+      - name: Verificar endpoint HTTP
+        run: |
+          curl --retry 10 --retry-delay 2 --retry-connrefused \
+            -fsS http://127.0.0.1:8080/health.php | grep -q '"status":"ok"'
+
+      - name: Encerrar contêiner de teste
+        if: always()
+        run: docker compose -p ci-php down --remove-orphans
+
+  deploy:
+    name: Atualizar Ubuntu Server
+    needs: testes
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64, aula-devops]
+    concurrency:
+      group: deploy-php-aula
+      cancel-in-progress: false
+    steps:
+      - name: Baixar versão aprovada
+        uses: actions/checkout@v4
+
+      - name: Construir imagem no servidor
+        run: docker compose -p aula-php build
+
+      - name: Publicar versão no servidor
+        run: docker compose -p aula-php up -d --no-build
+
+      - name: Conferir publicação HTTP
+        run: |
+          docker compose -p aula-php ps
+          curl --retry 10 --retry-delay 2 --retry-connrefused \
+            -fsS http://127.0.0.1:8080/health.php

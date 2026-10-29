@@ -1,0 +1,5 @@
+No src/funcoes.php, troque temporariamente:
+  return round($preco * $quantidade, 2);
+por:
+  return round($preco + $quantidade, 2);
+Depois rode php tests/test_funcoes.php.
